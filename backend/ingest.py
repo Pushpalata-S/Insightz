@@ -14,7 +14,7 @@ load_dotenv()
 DB_FILE = "doc_store.json"
 
 def process_image_with_gemini(image_path):
-    # Use gemini-flash-latest as requested
+    # STRICTLY KEPT: gemini-flash-latest
     llm = ChatGoogleGenerativeAI(model="gemini-flash-latest", temperature=0)
     
     with open(image_path, "rb") as image_file:
@@ -28,17 +28,21 @@ def process_image_with_gemini(image_path):
     try:
         response = llm.invoke([message])
         return "Picture", response.content
-    except Exception:
+    except Exception as e:
+        print(f"Image Error: {e}")
         return "Picture", "Image analysis failed."
 
 def extract_text_from_pdf(pdf_path):
     text = ""
-    with pdfplumber.open(pdf_path) as pdf:
-        for page in pdf.pages:
-            text += (page.extract_text() or "") + "\n"
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            for page in pdf.pages:
+                text += (page.extract_text() or "") + "\n"
+    except Exception as e:
+        print(f"PDF Extraction Error: {e}")
     return text
 
-def save_metadata(filename, category, summary):
+def save_metadata(filename, category, summary, owner):
     data = []
     if os.path.exists(DB_FILE):
         try:
@@ -46,11 +50,18 @@ def save_metadata(filename, category, summary):
         except: pass
     
     data = [d for d in data if d['filename'] != filename]
-    data.append({"filename": filename, "category": category, "summary": summary})
+    
+    # Save with OWNER
+    data.append({
+        "filename": filename, 
+        "category": category, 
+        "summary": summary,
+        "owner": owner 
+    })
     
     with open(DB_FILE, "w") as f: json.dump(data, f, indent=4)
 
-def ingest_file(file_path):
+def ingest_file(file_path, owner):
     original_filename = os.path.basename(file_path).replace("temp_", "")
     pages = []
     category = "General"
@@ -67,33 +78,257 @@ def ingest_file(file_path):
             if not raw_text.strip(): return {"error": "PDF is empty."}
             pages = [Document(page_content=raw_text, metadata={"source": file_path, "page": 1})]
             
-            # Use gemini-flash-latest
+            # STRICTLY KEPT: gemini-flash-latest
             llm = ChatGoogleGenerativeAI(model="gemini-flash-latest", temperature=0)
             try:
-                category = llm.invoke(f"Classify: [Resume, Invoice, General]. Text: {raw_text[:500]}").content.strip()
+                # --- READING 3000 CHARACTERS FOR ACCURACY ---
+                preview_text = raw_text[:3000]
+                prompt = (
+                    f"Analyze this text: \"{preview_text}\"\n"
+                    "Classify into ONE category: [Resume, Invoice, Report, General].\n"
+                    "If it contains 'Experience', 'Education', or 'Skills', it MUST be 'Resume'.\n"
+                    "Output ONLY the category name."
+                )
+                category = llm.invoke(prompt).content.strip()
                 summary = raw_text[:200].replace("\n", " ") + "..."
-            except: 
+            except Exception as e: 
+                # This print will tell you WHY it is failing in the terminal
+                print(f"AI Categorization Failed: {e}")
                 category = "General"
         else: return {"error": "Unsupported format."}
     except Exception as e: return {"error": f"Error: {e}"}
 
     # Embeddings
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-    chunks = text_splitter.split_documents(pages)
+    try:
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+        chunks = text_splitter.split_documents(pages)
+        
+        embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
+        new_db = FAISS.from_documents(chunks, embeddings)
+        
+        if os.path.exists("faiss_index"):
+            try:
+                old_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
+                old_db.merge_from(new_db)
+                old_db.save_local("faiss_index")
+            except: new_db.save_local("faiss_index")
+        else: new_db.save_local("faiss_index")
+    except Exception: pass
     
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
-    new_db = FAISS.from_documents(chunks, embeddings)
-    
-    if os.path.exists("faiss_index"):
-        try:
-            old_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
-            old_db.merge_from(new_db)
-            old_db.save_local("faiss_index")
-        except: new_db.save_local("faiss_index")
-    else: new_db.save_local("faiss_index")
-    
-    save_metadata(original_filename, category, summary)
+    save_metadata(original_filename, category, summary, owner)
     return {"status": "Success", "category": category, "summary": summary}
+
+
+
+# import os
+# import base64
+# import json
+# import pdfplumber
+# from dotenv import load_dotenv
+# from langchain.text_splitter import RecursiveCharacterTextSplitter
+# from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+# from langchain_community.vectorstores import FAISS
+# from langchain_core.messages import HumanMessage
+# from langchain.docstore.document import Document
+
+# load_dotenv()
+
+# DB_FILE = "doc_store.json"
+
+# def process_image_with_gemini(image_path):
+#     # STRICTLY KEPT: gemini-flash-latest
+#     llm = ChatGoogleGenerativeAI(model="gemini-flash-latest", temperature=0)
+    
+#     with open(image_path, "rb") as image_file:
+#         image_data = base64.b64encode(image_file.read()).decode("utf-8")
+        
+#     message = HumanMessage(content=[
+#         {
+#             "type": "text", 
+#             "text": "Describe this image and transcribe any text."
+#         },
+#         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}}
+#     ])
+    
+#     try:
+#         response = llm.invoke([message])
+#         return "Picture", response.content
+#     except Exception:
+#         return "Picture", "Image analysis failed."
+
+# def extract_text_from_pdf(pdf_path):
+#     text = ""
+#     with pdfplumber.open(pdf_path) as pdf:
+#         for page in pdf.pages:
+#             text += (page.extract_text() or "") + "\n"
+#     return text
+
+# # --- FIX: Added 'owner' parameter ---
+# def save_metadata(filename, category, summary, owner):
+#     data = []
+#     if os.path.exists(DB_FILE):
+#         try:
+#             with open(DB_FILE, "r") as f: data = json.load(f)
+#         except: pass
+    
+#     # Remove old entry
+#     data = [d for d in data if d['filename'] != filename]
+    
+#     # Save with OWNER
+#     data.append({
+#         "filename": filename, 
+#         "category": category, 
+#         "summary": summary,
+#         "owner": owner  # <--- SECURITY TAG ADDED
+#     })
+    
+#     with open(DB_FILE, "w") as f: json.dump(data, f, indent=4)
+
+# # --- FIX: Added 'owner' parameter ---
+# def ingest_file(file_path, owner):
+#     original_filename = os.path.basename(file_path).replace("temp_", "")
+#     pages = []
+#     category = "General"
+#     summary = "No summary."
+    
+#     try:
+#         if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
+#             category, raw_text = process_image_with_gemini(file_path)
+#             pages = [Document(page_content=raw_text, metadata={"source": file_path, "page": 1})]
+#             summary = raw_text[:200] + "..."
+            
+#         elif file_path.lower().endswith('.pdf'):
+#             raw_text = extract_text_from_pdf(file_path)
+#             if not raw_text.strip(): return {"error": "PDF is empty."}
+#             pages = [Document(page_content=raw_text, metadata={"source": file_path, "page": 1})]
+            
+#             # STRICTLY KEPT: gemini-flash-latest
+#             llm = ChatGoogleGenerativeAI(model="gemini-flash-latest", temperature=0)
+#             try:
+#                 category = llm.invoke(f"Classify: [Resume, Invoice, General]. Text: {raw_text[:500]}").content.strip()
+#                 summary = raw_text[:200].replace("\n", " ") + "..."
+#             except: 
+#                 category = "General"
+#         else: return {"error": "Unsupported format."}
+#     except Exception as e: return {"error": f"Error: {e}"}
+
+#     # Embeddings
+#     try:
+#         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+#         chunks = text_splitter.split_documents(pages)
+        
+#         embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
+#         new_db = FAISS.from_documents(chunks, embeddings)
+        
+#         if os.path.exists("faiss_index"):
+#             try:
+#                 old_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
+#                 old_db.merge_from(new_db)
+#                 old_db.save_local("faiss_index")
+#             except: new_db.save_local("faiss_index")
+#         else: new_db.save_local("faiss_index")
+#     except Exception: pass
+    
+#     # Pass owner to save_metadata
+#     save_metadata(original_filename, category, summary, owner)
+#     return {"status": "Success", "category": category, "summary": summary}
+
+# import os
+# import base64
+# import json
+# import pdfplumber
+# from dotenv import load_dotenv
+# from langchain.text_splitter import RecursiveCharacterTextSplitter
+# from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+# from langchain_community.vectorstores import FAISS
+# from langchain_core.messages import HumanMessage
+# from langchain.docstore.document import Document
+
+# load_dotenv()
+
+# DB_FILE = "doc_store.json"
+
+# def process_image_with_gemini(image_path):
+#     # Use gemini-flash-latest as requested
+#     llm = ChatGoogleGenerativeAI(model="gemini-flash-latest", temperature=0)
+    
+#     with open(image_path, "rb") as image_file:
+#         image_data = base64.b64encode(image_file.read()).decode("utf-8")
+        
+#     message = HumanMessage(content=[
+#         {"type": "text", "text": "Describe this image and transcribe any text."},
+#         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}}
+#     ])
+    
+#     try:
+#         response = llm.invoke([message])
+#         return "Picture", response.content
+#     except Exception:
+#         return "Picture", "Image analysis failed."
+
+# def extract_text_from_pdf(pdf_path):
+#     text = ""
+#     with pdfplumber.open(pdf_path) as pdf:
+#         for page in pdf.pages:
+#             text += (page.extract_text() or "") + "\n"
+#     return text
+
+# def save_metadata(filename, category, summary):
+#     data = []
+#     if os.path.exists(DB_FILE):
+#         try:
+#             with open(DB_FILE, "r") as f: data = json.load(f)
+#         except: pass
+    
+#     data = [d for d in data if d['filename'] != filename]
+#     data.append({"filename": filename, "category": category, "summary": summary})
+    
+#     with open(DB_FILE, "w") as f: json.dump(data, f, indent=4)
+
+# def ingest_file(file_path):
+#     original_filename = os.path.basename(file_path).replace("temp_", "")
+#     pages = []
+#     category = "General"
+#     summary = "No summary."
+    
+#     try:
+#         if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
+#             category, raw_text = process_image_with_gemini(file_path)
+#             pages = [Document(page_content=raw_text, metadata={"source": file_path, "page": 1})]
+#             summary = raw_text[:200] + "..."
+            
+#         elif file_path.lower().endswith('.pdf'):
+#             raw_text = extract_text_from_pdf(file_path)
+#             if not raw_text.strip(): return {"error": "PDF is empty."}
+#             pages = [Document(page_content=raw_text, metadata={"source": file_path, "page": 1})]
+            
+#             # Use gemini-flash-latest
+#             llm = ChatGoogleGenerativeAI(model="gemini-flash-latest", temperature=0)
+#             try:
+#                 category = llm.invoke(f"Classify: [Resume, Invoice, General]. Text: {raw_text[:500]}").content.strip()
+#                 summary = raw_text[:200].replace("\n", " ") + "..."
+#             except: 
+#                 category = "General"
+#         else: return {"error": "Unsupported format."}
+#     except Exception as e: return {"error": f"Error: {e}"}
+
+#     # Embeddings
+#     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+#     chunks = text_splitter.split_documents(pages)
+    
+#     embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
+#     new_db = FAISS.from_documents(chunks, embeddings)
+    
+#     if os.path.exists("faiss_index"):
+#         try:
+#             old_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
+#             old_db.merge_from(new_db)
+#             old_db.save_local("faiss_index")
+#         except: new_db.save_local("faiss_index")
+#     else: new_db.save_local("faiss_index")
+    
+#     save_metadata(original_filename, category, summary)
+#     return {"status": "Success", "category": category, "summary": summary}
 
 
 # import os
