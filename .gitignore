@@ -1,45 +1,46 @@
 # ---------------------
-# Python backend ignores
+# Python Virtual Environments
+# (Covers root, backend, and frontend specific envs)
 # ---------------------
-
-# Virtual environment
 venv/
+env/
+myenv/
+backend/myenv/
+backend/venv/
+frontend/myenv/
+
+# ---------------------
+# Environment Variables (Secrets)
+# ---------------------
 .env
 .env.*
+backend/.env
+frontend/.env
 
-# Python cache
+# ---------------------
+# Python Cache & Compiled Files
+# ---------------------
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 
-# FAISS index files
+# ---------------------
+# RAG / Project Specific Data
+# (Don't commit heavy databases or user uploads)
+# ---------------------
 *.index
-
-# Logs
-*.log
-
-# Local settings & secrets
+faiss_index/
+uploaded_files/
+doc_store.json
 *.sqlite3
 *.db
 
 # ---------------------
-# VS Code
-# ---------------------
-.vscode/
-*.code-workspace
-
-# ---------------------
-# OS files
-# ---------------------
-.DS_Store
-Thumbs.db
-
-# ---------------------
 # Node / Frontend
-# (if your "frontend" folder is React, Next.js, Vite, etc.)
 # ---------------------
 node_modules/
+frontend/node_modules/
 dist/
 build/
 npm-debug.log*
@@ -47,8 +48,15 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-store
 
-# Environment for frontend
-frontend/.env
-frontend/.env.local
-frontend/.env.*
+# ---------------------
+# VS Code / IDE
+# ---------------------
+.vscode/
+*.code-workspace
+.idea/
 
+# ---------------------
+# OS System Files
+# ---------------------
+.DS_Store
+Thumbs.db

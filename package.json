@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "marked": "^17.0.1",
+    "pdfplumber": "^0.0.1-security"
+  }
+}
