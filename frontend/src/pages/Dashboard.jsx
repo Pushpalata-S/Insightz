@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { marked } from 'marked'; // --- IMPORT MARKED FOR PRETTY TEXT ---
+import { marked } from 'marked'; 
 import { api } from '../services/api';
 
 export default function Dashboard() {
@@ -8,6 +8,9 @@ export default function Dashboard() {
   const [docs, setDocs] = useState([]);
   const [activeTab, setActiveTab] = useState('search'); 
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  
+  // --- NEW: USERNAME STATE ---
+  const [username, setUsername] = useState('Ranger'); 
 
   // Features State
   const [searchContext, setSearchContext] = useState('');
@@ -20,7 +23,13 @@ export default function Dashboard() {
 
   // Initial Load
   useEffect(() => {
-    if (!localStorage.getItem("ranger_token")) navigate('/');
+    const token = localStorage.getItem("ranger_token");
+    const storedName = localStorage.getItem("ranger_username"); // <--- GET NAME
+
+    if (!token) navigate('/');
+    
+    if (storedName) setUsername(storedName); // <--- SET NAME
+    
     fetchDocs();
   }, []);
 
@@ -40,6 +49,7 @@ export default function Dashboard() {
 
   const handleLogout = () => {
     localStorage.removeItem("ranger_token");
+    localStorage.removeItem("ranger_username"); // Clear name on logout
     navigate('/');
   };
 
@@ -174,7 +184,14 @@ export default function Dashboard() {
       <div className="main-content">
         <button className="mobile-toggle" onClick={() => setSidebarOpen(true)}>☰ Menu</button>
 
-        <h1 style={{ color: 'var(--accent)', marginTop: 0 }}>⚡ Yellow Ranger Console</h1>
+        {/* --- UPDATED HEADER WITH WELCOME MESSAGE --- */}
+        <div style={{ marginBottom: '20px' }}>
+            <h1 style={{ color: 'var(--accent)', margin: 0 }}>⚡ Yellow Ranger Console</h1>
+            <p style={{ color: '#888', marginTop: '5px', fontSize: '1.1em' }}>
+                Welcome back, <strong style={{ color: '#fff' }}>{username}</strong>!
+            </p>
+        </div>
+        {/* ------------------------------------------- */}
 
         <div className="upload-zone">
           <h3>⬆️ Upload New Intel</h3>
@@ -271,7 +288,7 @@ export default function Dashboard() {
                 Generate Connection Report
               </button>
 
-              {/* BUTTON 2: PAGE WISE SUMMARY (Already correctly added in your code) */}
+              {/* BUTTON 2: PAGE WISE SUMMARY */}
               <button 
                 className="action-btn" 
                 onClick={handlePageSummary}
