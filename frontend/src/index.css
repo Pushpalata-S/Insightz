@@ -74,8 +74,30 @@ input:focus { outline: none; border-color: var(--accent) !important; box-shadow:
 }
 .doc-item:hover { border-color: var(--accent); background: #252525; }
 
-.doc-info { display: flex; flex-direction: column; flex: 1; padding-left: 12px; pointer-events: none; }
-.doc-name { font-weight: bold; font-size: 0.95em; color: #fff; }
+/* Update this class */
+.doc-info { 
+    display: flex; 
+    flex-direction: column; 
+    pointer-events: none; 
+    
+    /* --- NEW LINES --- */
+    flex: 1;        /* Take up available space */
+    min-width: 0;   /* CRITICAL: Allows flex child to shrink below content size */
+    padding-right: 10px; /* Add some breathing room */
+}
+
+/* Update this class */
+.doc-name { 
+    font-weight: bold; 
+    font-size: 0.9em; 
+    color: var(--text); 
+    
+    /* --- NEW LINES --- */
+    white-space: nowrap;      /* Force text to stay on one line */
+    overflow: hidden;         /* Hide anything that sticks out */
+    text-overflow: ellipsis;  /* Add the "..." at the end */
+    display: block;           /* Ensures these properties work */
+}
 .doc-cat { font-size: 0.75em; color: #888; text-transform: uppercase; margin-top: 4px; }
 
 /* Buttons */
